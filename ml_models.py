@@ -4,27 +4,30 @@ Created on Mon Dec 16 12:00:15 2019
 
 @author: xg16060
 """
-# data preparation packaegs
+# data preparation packages
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn import preprocessing
 
-# modeling packages 
+#modeling packages 
 from sklearn import tree
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 import xgboost as xgb
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_curve, roc_auc_score
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_curve, roc_auc_score, f1_score, precision_score, recall_score, mean_absolute_error, mean_squared_error, r2_score
 
-# from sklearn.naive_bayes import GaussianNB
+#from sklearn.naive_bayes import GaussianNB
 from collections import Counter
 from sklearn.model_selection import cross_val_score
+from sklearn.feature_selection import SelectFromModel, f_regression
 
-# tuning parameters
-from sklearn.model_selection import GridSearchCV
+#tuning parameters
+import random
+from sklearn import model_selection
+
 
 
 #%% functions
@@ -71,10 +74,11 @@ def get_numeric_df(df):
     
     return pd.concat([df_continuous_normalized,df_categorical_hotencoded], axis=1)
 
+
 def display_ROC_curve(y_test, y_pred):
     '''
     plot ROC curve 
-    '''    
+    '''
     fpr, tpr, thresholds = roc_curve(y_test, y_pred)
     plt.figure()
     plt.plot(fpr, tpr, color='darkorange', lw=2,label='ROC curve (area = %0.2f)' % roc_auc_score(y_test, y_pred))
@@ -94,26 +98,18 @@ def evaluatePred(y_test, y_pred, optimal_cutoff):
     '''
     y_pred = y_pred[:,0]
 # TODO: be careful that false positive and false negative might be inversed on the powerpoint (similar resuls)
+#     optimal cutoff is only optimised for logistic regression ?
     print('The default cutoff')
     y_pred_cutoff_05 = np.where(y_pred > 0.5, 0, 1)
-    print('Confusion matrix:')
-    print(confusion_matrix(y_test, y_pred_cutoff_05))
-    print('accuracy score: ', accuracy_score(y_test, y_pred_cutoff_05))
-    print('the value of the AUC: ', roc_auc_score(y_test, y_pred_cutoff_05))
+    KPI(y_test, y_pred_cutoff_05)
     if optimal_cutoff != 0.5:
         print('')
         print('The optimal cutoff: ')
         y_pred_cutoff_optimal = np.where(y_pred > optimal_cutoff, 0, 1)
-        print('Confusion matrix: ')
-        print(confusion_matrix(y_test, y_pred_cutoff_optimal))
-        print('accuracy score: ', accuracy_score(y_test, y_pred_cutoff_optimal))
-        print('the value of the AUC: ', roc_auc_score(y_test, y_pred_cutoff_optimal))
-# TODO: implement Roc curve correctly
-    # roc curve
-    # display_ROC_curve(y_test, y_pred)
+        KPI(y_test, y_pred_cutoff_optimal)
     print('')
 
-# data preprocessing functions
+#data preprocessing functions
     
 def removeMissingProvince(df):
     '''
@@ -123,83 +119,106 @@ def removeMissingProvince(df):
     df.drop('PROVINCIE', axis=1, inplace=True)
     return df
 
-def f_importances(coef, names):
+# results quality analysis functions
+def f_importances(coef, names, importance_treshold):
     '''
     plot the feature importance 
     '''
     imp = coef
-    imp,names = zip(*sorted(zip(imp,names)))
+    # imp,names = zip(*sorted(zip(imp,names))[-10:])
+    imp,names = zip(*sorted(i for i in zip(imp,names) if (i[0] >= importance_treshold or i[0] <= -importance_treshold)))
+    plt.rcParams["font.size"] = 8
+    plt.subplots_adjust(left=0.2)
+    plt.subplots_adjust(right=0.99)
     plt.barh(range(len(names)), imp, align='center')
     plt.yticks(range(len(names)), names)
     plt.show()
 
-def f_importances_abs(coef, names):
+def f_importances_abs(coef, names, importance_treshold):
     imp = abs(coef)
-    imp,names = zip(*sorted(zip(imp,names)))
+    # imp,names = zip(*sorted(zip(imp,names))[-10:])
+    imp,names = zip(*sorted(i for i in zip(imp,names) if i[0] >= importance_treshold))
+    plt.rcParams["font.size"] = 8
+    plt.subplots_adjust(left=0.2)
+    plt.subplots_adjust(right=0.99)
     plt.barh(range(len(names)), imp, align='center')
     plt.yticks(range(len(names)), names)
-    
+    plt.show()
+
+def KPI(y_test, y_pred):
+    print('Confusion matrix:')
+    print(confusion_matrix(y_test, y_pred))
+    print('accuracy score: ', accuracy_score(y_test, y_pred))
+    print('precision score: ', precision_score(y_test, y_pred))
+    print('recall score: ', recall_score(y_test, y_pred))
+    print('f1 score: ', f1_score(y_test, y_pred))
+    print('the value of the AUC: ', roc_auc_score(y_test, y_pred))
+    print('the value of the MAE: ', mean_absolute_error(y_test, y_pred))    #should be used on probabilities, or non binary
+    print('the value of the MSE: ', mean_squared_error(y_test, y_pred))     #should be used on probabilities, or non binary
+    print('the value of the R2: ', r2_score(y_test, y_pred))
+    display_ROC_curve(y_test, y_pred)
+
 
 def compare_algorithms(X_train, y_train, X_test, y_test, optimal_cutoff):
 
-    # ##model: naive bayes
-    # print('NB')
-    # print(y_test.value_counts()[y_train.value_counts()[:1].index.tolist()[0]]/sum(y_test.value_counts().tolist()))
-    #
-    # ## model: k-nearest-neighbors
-    # print('KNN')
-    # n_neighbors_values = {'n_neighbors': range(4, 6)}
-    # KNNclassifier_PK = KNeighborsClassifier()
-    # model_KNN_PK = GridSearchCV(KNNclassifier_PK, param_grid=n_neighbors_values, scoring='accuracy').fit(X_train, y_train_PK_balanced)
-    # y_pred_KNN = model_KNN_PK.predict(X_test)
-    # evaluatePred(y_test, y_pred_KNN)
+    ##model: naive bayes
+    print('NB')
+    print(y_test.value_counts()[y_train.value_counts()[:1].index.tolist()[0]]/sum(y_test.value_counts().tolist()))
+
+    ## model: k-nearest-neighbors
+    print('KNN')
+    n_neighbors_values = {'n_neighbors': range(4, 6)}
+    KNNclassifier_PK = KNeighborsClassifier()
+    model_KNN_PK = model_selection.GridSearchCV(KNNclassifier_PK, param_grid=n_neighbors_values, scoring='accuracy').fit(X_train, y_train_pk_balanced)
+    y_pred_KNN = model_KNN_PK.predict_proba(X_test)
+    evaluatePred(y_test, y_pred_KNN, optimal_cutoff)
 
     ## model: logitic regression(print features coefficients + stats)
     print('LR')
-# TODO: add cross-validation ? Done but uses regular accuracy with 0.5 as cuttoff
+# TODO: verify cross-validation LR from sklearn library
+    # model_LR = LogisticRegressionCV(random_state=123, solver='liblinear').fit(X_train, y_train)
     model_LR = LogisticRegression(random_state=123, solver='liblinear').fit(X_train, y_train)
-    model_crossValidation_mean_score = cross_val_score(model_LR, X_train, y_train, cv=10).mean()
-    print("model crossValidation mean score", model_crossValidation_mean_score)
-    # no convergence
+    # model_crossValidation_mean_score = cross_val_score(model_LR, X_train, y_train, cv=10).mean()
+    # print("model crossValidation mean score", model_crossValidation_mean_score)
     y_pred_LR = model_LR.predict_proba(X_test)
     evaluatePred(y_test, y_pred_LR, optimal_cutoff)
-    f_importances_abs(np.array(model_LR.coef_[0]), X_test.columns)
+    f_importances_abs(np.array(model_LR.coef_[0]), X_test.columns, 1)
 
-    # ## model: decision tree (
-    # print('Tree')
-    # model_treeClassifier = tree.DecisionTreeClassifier().fit(X_train, y_train)
-    # y_pred_treeClassifier = model_treeClassifier.predict(X_test)
-    # evaluatePred(y_test, y_pred_treeClassifier)
-    #
-    # ##model: random forest print feature importance)
-    # print('RF')
-    # model_RF = RandomForestClassifier().fit(X_train, y_train)
-    # y_pred_RF = model_RF.predict(X_test)
-    # evaluatePred(y_test, y_pred_RF)
-    #
-    # ##model: xgBoost
-    # print('XGBoost')
-    # model_XGB = xgb.XGBClassifier().fit(X_train, y_train)
-    # y_pred_XGB = model_XGB.predict(X_test)
-    # evaluatePred(y_test, y_pred_XGB)
-    #
-    # ##model: SVM
-    # print('SVM')
-    # model_SVM = SVC(kernel='linear').fit(X_train, y_train)
-    # y_pred_SVM = model_SVM.predict(X_test)
-    # evaluatePred(y_test, y_pred_SVM)
-    # f_importances_abs(np.array(model_SVM.coef_[0]), X_test.columns)
+    ## model: decision tree (
+    print('Tree')
+    model_treeClassifier = tree.DecisionTreeClassifier().fit(X_train, y_train)
+    y_pred_treeClassifier = model_treeClassifier.predict_proba(X_test)
+    evaluatePred(y_test, y_pred_treeClassifier, optimal_cutoff)
+
+    ##model: random forest print feature importance)
+    print('RF')
+    model_RF = RandomForestClassifier().fit(X_train, y_train)
+    y_pred_RF = model_RF.predict_proba(X_test)
+    evaluatePred(y_test, y_pred_RF, optimal_cutoff)
+
+    ##model: xgBoost
+    print('XGBoost')
+    model_XGB = xgb.XGBClassifier().fit(X_train, y_train)
+    y_pred_XGB = model_XGB.predict_proba(X_test)
+    evaluatePred(y_test, y_pred_XGB, optimal_cutoff)
+
+    ##model: SVM
+    print('SVM')
+    model_SVM = SVC(kernel='linear', probability=True).fit(X_train, y_train)
+    y_pred_SVM = model_SVM.predict_proba(X_test)
+    evaluatePred(y_test, y_pred_SVM, optimal_cutoff)
+    f_importances_abs(np.array(model_SVM.coef_[0]), X_test.columns)
 
 
-    
-#%% load the data 
 
-load_location="C:\\Users\\xg16060\\OneDrive - APG\\tanguy table\\"
-save_location = "C:\\Users\\xg16060\\OneDrive - APG\\tanguy table\\constructData\\"
-#load_location = "C:\\Users\\xg16137\\PycharmProjects\\NormalizationOneHot\\Data\\"
-#save_location = "C:\\Users\\xg16137\\PycharmProjects\\NormalizationOneHot\\ModifiedData\\"
+#%%load the data
 
-# the three differents embeddings of the feature location
+# load_location="C:\\Users\\xg16060\\OneDrive - APG\\tanguy table\\"
+# save_location = "C:\\Users\\xg16060\\OneDrive - APG\\tanguy table\\constructData\\"
+load_location = "C:\\Users\\xg16137\\PycharmProjects\\NormalizationOneHot\\Data\\"
+save_location = "C:\\Users\\xg16137\\PycharmProjects\\NormalizationOneHot\\ModifiedData\\"
+
+# the three different embeddings of the feature location
 dfTopLocCustEmb = pd.read_csv(load_location + "GLoc_topic_Loc_cust_embeddings.csv")
 dfTopLocEmb = pd.read_csv(load_location + "GLocation_topic_Location_embeddings.csv")
 dfprovinceEmb = pd.read_csv(load_location + "Gprovince_embeddings.csv")
@@ -207,28 +226,31 @@ dfprovinceEmb = pd.read_csv(load_location + "Gprovince_embeddings.csv")
 # the balanced training dataset
 dfTrain_balanced_rose_pk = pd.read_csv(load_location + "training_balanced_rose_pk.csv", encoding ="ISO-8859-1")
 dfTrain_balanced_rose_dz = pd.read_csv(load_location + "training_balanced_rose_dz.csv", encoding ="ISO-8859-1")
-#The imbalance traning data
+
+# the imbalance traning data
 dfTrain_imbalanced = pd.read_csv(load_location + "training_imbalance.csv", encoding ="ISO-8859-1")
 
 # the test dataset
 dfTest_dataset = pd.read_csv(load_location + "testing.csv", encoding ="ISO-8859-1")
 
 #%% build the BDA table 
-  
-# transpose the embedding features 
+
+#data preparation     
+
+# transpose the embedding features
 dfTopLocCust_normOneHot = dfTopLocCustEmb.drop(['Unnamed: 0'],axis=1).transpose()
 dfTopLocEmb_normOneHot = dfTopLocEmb.drop(['Unnamed: 0'],axis=1).transpose()
 dfprovinceEmb_normOneHot = dfprovinceEmb.drop(['Unnamed: 0'],axis=1).transpose()
 
-# add the "province" feature in the transposed embedding features, 
-
+# add the "province" feature
 dfTopLocCust_normOneHot['PROVINCIE'] = dfTopLocCust_normOneHot.index
 dfTopLocEmb_normOneHot['PROVINCIE'] = dfTopLocEmb_normOneHot.index
 dfprovinceEmb_normOneHot['PROVINCIE'] = dfprovinceEmb_normOneHot.index
 
 ###################################################################################################################################################################
 #%%
-# add the location embeddings to the costumer data via the key: 'PROVINCIE'.
+
+# add the location embeddings to the costumer data, via the key: 'PROVINCIE'.
 
 # get the complete balanced training datasets for the PK topic
 df_CustData_TopLocCust_included_pk = pd.merge(dfTrain_balanced_rose_pk, dfTopLocCust_normOneHot, how='left', on='PROVINCIE')
@@ -240,7 +262,7 @@ df_CustData_TopLocCust_included_dz = pd.merge(dfTrain_balanced_rose_dz, dfTopLoc
 df_CustData_TopLocEmb_included_dz = pd.merge(dfTrain_balanced_rose_dz, dfTopLocEmb_normOneHot, how='left', on='PROVINCIE')
 df_CustData_provinceEmb_included_dz = pd.merge(dfTrain_balanced_rose_dz, dfprovinceEmb_normOneHot, how='left', on='PROVINCIE')
 
-# get the complete imbalanced training datasets 
+# get the complete imbalanced training datasets
 df_CustData_TopLocCust_included_imbalanced = pd.merge(dfTrain_imbalanced, dfTopLocCust_normOneHot, how='left', on='PROVINCIE')
 df_CustData_TopLocEmb_included_imbalanced = pd.merge(dfTrain_imbalanced, dfTopLocEmb_normOneHot, how='left', on='PROVINCIE')
 df_CustData_provinceEmb_included_imbalanced = pd.merge(dfTrain_imbalanced, dfprovinceEmb_normOneHot, how='left', on='PROVINCIE')
@@ -253,7 +275,7 @@ df_CustData_Test_provinceEmb_included = pd.merge(dfTest_dataset, dfprovinceEmb_n
 
 ###################################################################################################################################################################
 #%%
-# remove the clients without the location 
+# remove the clients without the location
 
 # PK
 df_CustData_TopLocCust_included_pk = removeMissingProvince(df_CustData_TopLocCust_included_pk)
@@ -284,7 +306,8 @@ selected_features_RandomForest_dz = ["LEEFT", "OMS_SMLVRM", "SECTOR_MMS_LATEST_J
 selected_features_Boruta_pk = ["OMS_GESLACHT", "LEEFT", "COMMUNICATIONCHOICE", "NUMBER_OF_DIVORCES", "PARTTIME_INCOME_TOT", "PARTTIME_FACTOR_TOT", "TYPE_DLN_BIGGEST_JOB",  "SECTOR_MMS_BIGGEST_JOB", "PARTTIME_FACTOR_LATEST_JOB", "INCOME_PARTTIME_LATEST_JOB"]
 selected_features_Boruta_dz = ["OMS_GESLACHT", "LEEFT", "NUMBER_OF_DIVORCES",  "OMS_SMLVRM","NUMBER_OF_DLN", "PARTTIME_INCOME_TOT", "PARTTIME_FACTOR_TOT", "TYPE_DLN_BIGGEST_JOB", "NETTOPENSION_IND", "PARTTIME_FACTOR_LATEST_JOB", "INCOME_PARTTIME_LATEST_JOB"]
 
-#%%normalize the numerical features in the training dataset
+#%%
+# normalize the numerical features in the training dataset
 # The balanced dataset
 # Balanced data without the features selection for the topic PK
 X_train_TopLocCust_balanced_allFeatures_pk = get_numeric_df(df_CustData_TopLocCust_included_pk.drop(['KLTID', 'Target', 'TargetDZ', 'TargetPK'], axis=1))
@@ -311,12 +334,13 @@ X_train_TopLocCust_balanced_Boruta_pk = get_numeric_df(df_CustData_TopLocCust_in
 X_train_TopLocEmb_balanced_Boruta_pk = get_numeric_df(df_CustData_TopLocEmb_included_pk.loc[:,selected_features_Boruta_pk])
 X_train_provinceEmb_balanced_Boruta_pk = get_numeric_df(df_CustData_provinceEmb_included_pk.loc[:,selected_features_Boruta_pk])
 
-# Balanced data with the features selection by boruta for the topic dz
+# Balanced data with the features selection by boruta for the topic DZ
 X_train_TopLocCust_balanced_Boruta_dz = get_numeric_df(df_CustData_TopLocCust_included_dz.loc[:,selected_features_Boruta_dz])
 X_train_TopLocEmb_balanced_Boruta_dz = get_numeric_df(df_CustData_TopLocEmb_included_dz.loc[:,selected_features_Boruta_dz])
 X_train_provinceEmb_balanced_Boruta_dz = get_numeric_df(df_CustData_provinceEmb_included_dz.loc[:,selected_features_Boruta_dz])
 
-#%% The imbalanced dataset
+#%%
+# The imbalanced dataset
 # Imbalanced data without the features selection
 X_train_TopLocCust_imbalanced_allFeatures = get_numeric_df(df_CustData_TopLocCust_included_imbalanced.drop(['KLTID', 'Target', 'TargetDZ', 'TargetPK'], axis=1))
 X_train_TopLocEmb_imbalanced_allFeatures = get_numeric_df(df_CustData_TopLocEmb_included_imbalanced.drop(['KLTID', 'Target', 'TargetDZ', 'TargetPK'], axis=1))
@@ -326,17 +350,18 @@ X_train_provinceEmb_imbalanced_allFeatures = get_numeric_df(df_CustData_province
 X_train_TopLocCust_imbalanced_RandomForest_pk = get_numeric_df(df_CustData_TopLocCust_included_imbalanced.loc[:,selected_features_RandomForest_pk])
 X_train_TopLocEmb_imbalanced_RandomForest_pk = get_numeric_df(df_CustData_TopLocEmb_included_imbalanced.loc[:,selected_features_RandomForest_pk])
 X_train_provinceEmb_imbalanced_RandomForest_pk = get_numeric_df(df_CustData_provinceEmb_included_imbalanced.loc[:,selected_features_RandomForest_pk])
+
 #  Imbalanced data with the features selection with random forest for the topic dz
-X_train_TopLocCust_imbalanced_RandomFores_dz = get_numeric_df(df_CustData_TopLocCust_included_imbalanced.loc[:,selected_features_RandomForest_dz])
+X_train_TopLocCust_imbalanced_RandomForest_dz = get_numeric_df(df_CustData_TopLocCust_included_imbalanced.loc[:,selected_features_RandomForest_dz])
 X_train_TopLocEmb_imbalanced_RandomForest_dz = get_numeric_df(df_CustData_TopLocEmb_included_imbalanced.loc[:,selected_features_RandomForest_dz])
 X_train_provinceEmb_imbalanced_RandomForest_dz = get_numeric_df(df_CustData_provinceEmb_included_imbalanced.loc[:,selected_features_RandomForest_dz])
 
-#   Imbalanced data with the features selection with  boruta for the topic pk 
+#   Imbalanced data with the features selection with boruta for the topic pk
 X_train_TopLocCust_imbalanced_Boruta_pk = get_numeric_df(df_CustData_TopLocCust_included_imbalanced.loc[:,selected_features_Boruta_pk])
 X_train_TopLocEmb_imbalanced_Boruta_pk = get_numeric_df(df_CustData_TopLocEmb_included_imbalanced.loc[:,selected_features_Boruta_pk])
 X_train_provinceEmb_imbalanced_Boruta_pk = get_numeric_df(df_CustData_provinceEmb_included_imbalanced.loc[:,selected_features_Boruta_pk])
 
-#   Imbalanced data with the features selection with  boruta for the topic dz
+#   Imbalanced data with the features selection with boruta for the topic dz
 X_train_TopLocCust_imbalanced_Boruta_dz = get_numeric_df(df_CustData_TopLocCust_included_imbalanced.loc[:,selected_features_Boruta_dz])
 X_train_TopLocEmb_imbalanced_Boruta_dz = get_numeric_df(df_CustData_TopLocEmb_included_imbalanced.loc[:,selected_features_Boruta_dz])
 X_train_provinceEmb_imbalanced_Boruta_dz = get_numeric_df(df_CustData_provinceEmb_included_imbalanced.loc[:,selected_features_Boruta_dz])
@@ -353,7 +378,6 @@ X_test_provinceEmb_allFeatures = get_numeric_df(df_CustData_Test_provinceEmb_inc
 X_test_TopLocCust_RandomForest_pk = get_numeric_df(df_CustData_Test_TopLocCust_included.loc[:,selected_features_RandomForest_pk])
 X_test_TopLocEmb_RandomForest_pk = get_numeric_df(df_CustData_Test_TopLocEmb_included.loc[:,selected_features_RandomForest_pk])
 X_test_provinceEmb_RandomForest_pk = get_numeric_df(df_CustData_Test_provinceEmb_included.loc[:,selected_features_RandomForest_pk])
-
 #       dz
 X_test_TopLocCust_RandomForest_dz = get_numeric_df(df_CustData_Test_TopLocCust_included.loc[:,selected_features_RandomForest_dz])
 X_test_TopLocEmb_RandomForest_dz = get_numeric_df(df_CustData_Test_TopLocEmb_included.loc[:,selected_features_RandomForest_dz])
@@ -371,30 +395,71 @@ X_test_provinceEmb_Boruta_dz = get_numeric_df(df_CustData_Test_provinceEmb_inclu
 
 #%%
 # Output
-# for train 
+# for train
 #balanced
-y_train_PK_balanced = df_CustData_TopLocCust_included_pk['TargetPK']
-y_train_DZ_balanced = df_CustData_TopLocCust_included_dz['TargetDZ']
+y_train_pk_balanced = df_CustData_TopLocCust_included_pk['TargetPK']
+y_train_dz_balanced = df_CustData_TopLocCust_included_dz['TargetDZ']
 
 #imbalanced
-y_train_PK_imbalanced = df_CustData_TopLocCust_included_imbalanced['TargetPK']
-y_train_DZ_imbalanced = df_CustData_TopLocCust_included_imbalanced['TargetDZ']
+y_train_pk_imbalanced = df_CustData_TopLocCust_included_imbalanced['TargetPK']
+y_train_dz_imbalanced = df_CustData_TopLocCust_included_imbalanced['TargetDZ']
 
 # for test
-y_test_PK = df_CustData_Test_TopLocCust_included['TargetPK']
-y_test_DZ = df_CustData_Test_TopLocCust_included['TargetDZ']
+y_test_pk = df_CustData_Test_TopLocCust_included['TargetPK']
+y_test_dz = df_CustData_Test_TopLocCust_included['TargetDZ']
 
 
 
-#%%apply all algorithms on the different grapg embedings
+#%%apply all algorithms on the different graph embedings
 
-
+# construct the balanced and imbalanced combinaisons for TopLocCust, for PK
 Diff_Embeddings_balanced_TopLocCust_pk = [["balanced all features", X_train_TopLocCust_balanced_allFeatures_pk, X_test_TopLocCust_allFeatures, 0.7710908], ["balanced random forest", X_train_TopLocCust_balanced_RandomForest_pk, X_test_TopLocCust_RandomForest_pk, 0.5], ["balanced boruta", X_train_TopLocCust_balanced_Boruta_pk, X_test_TopLocCust_Boruta_pk, 0.5]]
 Diff_Embeddings_imbalanced_TopLocCust_pk = [["imbalanced all features", X_train_TopLocCust_imbalanced_allFeatures, X_test_TopLocCust_allFeatures, 0.5954308], ["imbalanced random forest", X_train_TopLocCust_imbalanced_RandomForest_pk, X_test_TopLocCust_RandomForest_pk, 0.5], ["imbalanced boruta", X_train_TopLocCust_imbalanced_Boruta_pk, X_test_TopLocCust_Boruta_pk, 0.5]]
-Diff_Embeddings_TopLocCust_pk = [[Diff_Embeddings_balanced_TopLocCust_pk, y_train_PK_balanced], [Diff_Embeddings_imbalanced_TopLocCust_pk, y_train_PK_imbalanced]]
+Diff_Embeddings_TopLocCust_pk = [[Diff_Embeddings_balanced_TopLocCust_pk, y_train_pk_balanced], [Diff_Embeddings_imbalanced_TopLocCust_pk, y_train_pk_imbalanced]]
 
-for y_train_balanced_or_imbalanced in Diff_Embeddings_TopLocCust_pk:
-    for emb in y_train_balanced_or_imbalanced[0]:
-        print(emb[0])
-        # print(emb[0],y_train_balanced_or_imbalanced[1], emb[1], y_test_PK)
-        compare_algorithms(emb[1], y_train_balanced_or_imbalanced[1], emb[2], y_test_PK, emb[3])
+# construct the balanced and imbalanced combinaisons for TopLocEmb, for PK
+Diff_Embeddings_balanced_TopLocEmb_pk = [["balanced all features", X_train_TopLocEmb_balanced_allFeatures_pk, X_test_TopLocEmb_allFeatures, 0.7710908], ["balanced random forest", X_train_TopLocEmb_balanced_RandomForest_pk, X_test_TopLocEmb_RandomForest_pk, 0.5], ["balanced boruta", X_train_TopLocEmb_balanced_Boruta_pk, X_test_TopLocEmb_Boruta_pk, 0.5]]
+Diff_Embeddings_imbalanced_TopLocEmb_pk = [["imbalanced all features", X_train_TopLocEmb_imbalanced_allFeatures, X_test_TopLocEmb_allFeatures, 0.5954308], ["imbalanced random forest", X_train_TopLocEmb_imbalanced_RandomForest_pk, X_test_TopLocEmb_RandomForest_pk, 0.5], ["imbalanced boruta", X_train_TopLocEmb_imbalanced_Boruta_pk, X_test_TopLocEmb_Boruta_pk, 0.5]]
+Diff_Embeddings_TopLocEmb_pk = [[Diff_Embeddings_balanced_TopLocEmb_pk, y_train_pk_balanced], [Diff_Embeddings_imbalanced_TopLocEmb_pk, y_train_pk_imbalanced]]
+
+# construct the balanced and imbalanced combinaisons for provinceEmb, for PK
+Diff_Embeddings_balanced_provinceEmb_pk = [["balanced all features", X_train_provinceEmb_balanced_allFeatures_pk, X_test_provinceEmb_allFeatures, 0.7710908], ["balanced random forest", X_train_provinceEmb_balanced_RandomForest_pk, X_test_provinceEmb_RandomForest_pk, 0.5], ["balanced boruta", X_train_provinceEmb_balanced_Boruta_pk, X_test_provinceEmb_Boruta_pk, 0.5]]
+Diff_Embeddings_imbalanced_provinceEmb_pk = [["imbalanced all features", X_train_provinceEmb_imbalanced_allFeatures, X_test_provinceEmb_allFeatures, 0.5954308], ["imbalanced random forest", X_train_provinceEmb_imbalanced_RandomForest_pk, X_test_provinceEmb_RandomForest_pk, 0.5], ["imbalanced boruta", X_train_provinceEmb_imbalanced_Boruta_pk, X_test_provinceEmb_Boruta_pk, 0.5]]
+Diff_Embeddings_provinceEmb_pk = [[Diff_Embeddings_balanced_provinceEmb_pk, y_train_pk_balanced], [Diff_Embeddings_imbalanced_provinceEmb_pk, y_train_pk_imbalanced]]
+
+Diff_Embeddings_pk = [Diff_Embeddings_TopLocCust_pk]#, Diff_Embeddings_TopLocEmb_pk, Diff_Embeddings_provinceEmb_pk
+
+
+# construct the balanced and imbalanced combinaisons for TopLocCust, for DZ
+Diff_Embeddings_balanced_TopLocCust_dz = [["balanced all features", X_train_TopLocCust_balanced_allFeatures_dz, X_test_TopLocCust_allFeatures, 0.7710908], ["balanced random forest", X_train_TopLocCust_balanced_RandomForest_dz, X_test_TopLocCust_RandomForest_dz, 0.5], ["balanced boruta", X_train_TopLocCust_balanced_Boruta_dz, X_test_TopLocCust_Boruta_dz, 0.5]]
+Diff_Embeddings_imbalanced_TopLocCust_dz = [["imbalanced all features", X_train_TopLocCust_imbalanced_allFeatures, X_test_TopLocCust_allFeatures, 0.5954308], ["imbalanced random forest", X_train_TopLocCust_imbalanced_RandomForest_dz, X_test_TopLocCust_RandomForest_dz, 0.5], ["imbalanced boruta", X_train_TopLocCust_imbalanced_Boruta_dz, X_test_TopLocCust_Boruta_dz, 0.5]]
+Diff_Embeddings_TopLocCust_dz = [[Diff_Embeddings_balanced_TopLocCust_dz, y_train_dz_balanced], [Diff_Embeddings_imbalanced_TopLocCust_dz, y_train_dz_imbalanced]]
+
+# construct the balanced and imbalanced combinaisons for TopLocEmb, for DZ
+Diff_Embeddings_balanced_TopLocEmb_dz = [["balanced all features", X_train_TopLocEmb_balanced_allFeatures_dz, X_test_TopLocEmb_allFeatures, 0.7710908], ["balanced random forest", X_train_TopLocEmb_balanced_RandomForest_dz, X_test_TopLocEmb_RandomForest_dz, 0.5], ["balanced boruta", X_train_TopLocEmb_balanced_Boruta_dz, X_test_TopLocEmb_Boruta_dz, 0.5]]
+Diff_Embeddings_imbalanced_TopLocEmb_dz = [["imbalanced all features", X_train_TopLocEmb_imbalanced_allFeatures, X_test_TopLocEmb_allFeatures, 0.5954308], ["imbalanced random forest", X_train_TopLocEmb_imbalanced_RandomForest_dz, X_test_TopLocEmb_RandomForest_dz, 0.5], ["imbalanced boruta", X_train_TopLocEmb_imbalanced_Boruta_dz, X_test_TopLocEmb_Boruta_dz, 0.5]]
+Diff_Embeddings_TopLocEmb_dz = [[Diff_Embeddings_balanced_TopLocEmb_dz, y_train_dz_balanced], [Diff_Embeddings_imbalanced_TopLocEmb_dz, y_train_dz_imbalanced]]
+
+# construct the balanced and imbalanced combinaisons for provinceEmb, for DZ
+Diff_Embeddings_balanced_provinceEmb_dz = [["balanced all features", X_train_provinceEmb_balanced_allFeatures_dz, X_test_provinceEmb_allFeatures, 0.7710908], ["balanced random forest", X_train_provinceEmb_balanced_RandomForest_dz, X_test_provinceEmb_RandomForest_dz, 0.5], ["balanced boruta", X_train_provinceEmb_balanced_Boruta_dz, X_test_provinceEmb_Boruta_dz, 0.5]]
+Diff_Embeddings_imbalanced_provinceEmb_dz = [["imbalanced all features", X_train_provinceEmb_imbalanced_allFeatures, X_test_provinceEmb_allFeatures, 0.5954308], ["imbalanced random forest", X_train_provinceEmb_imbalanced_RandomForest_dz, X_test_provinceEmb_RandomForest_dz, 0.5], ["imbalanced boruta", X_train_provinceEmb_imbalanced_Boruta_dz, X_test_provinceEmb_Boruta_dz, 0.5]]
+Diff_Embeddings_provinceEmb_dz = [[Diff_Embeddings_balanced_provinceEmb_dz, y_train_dz_balanced], [Diff_Embeddings_imbalanced_provinceEmb_dz, y_train_dz_imbalanced]]
+
+Diff_Embeddings_dz = [Diff_Embeddings_TopLocCust_dz, Diff_Embeddings_TopLocEmb_dz, Diff_Embeddings_provinceEmb_dz]
+
+#add the random seed in order to produce the same results
+random.seed(123)
+
+# Cycle trough all the combination, regarding the subject PK
+for embType_pk in Diff_Embeddings_pk:
+    for y_train_balanced_or_imbalanced in embType_pk:
+        for emb in y_train_balanced_or_imbalanced[0]:
+            print(emb[0])
+            compare_algorithms(emb[1], y_train_balanced_or_imbalanced[1], emb[2], y_test_pk, emb[3])
+
+## Cycle trough all the combinaiton, regarding the subject DZ
+# for embType_dz in Diff_Embeddings_dz:
+#     for y_train_balanced_or_imbalanced in embType_dz:
+#         for emb in y_train_balanced_or_imbalanced[0]:
+#             print(emb[0])
+#             compare_algorithms(emb[1], y_train_balanced_or_imbalanced[1], emb[2], y_test_dz, emb[3])
