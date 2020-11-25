@@ -1,0 +1,27 @@
+EDA exploratry data analysis
+Goal: understand the data: is feature significant, are some features correlated, missing data for feature, identify outliers  
+
+assuming we have a clean dataset (no need to check missing value and duplicate)
+
+analyse relationships between variables:
+	
+1 correlation matrix: shows correlation coefficient between variable
+	to see paterns
+	interesting link with scatter plot
+	careful, only linear
+2 scatter plot: graph x/y->one feature/other feature 
+	to understand relationship, identify outlier/extreme values
+	(pairplot is alle possible scatter plot combinaisons)
+3a histogram: for one continuous variable, shows distribution of variable value 
+3b bar graph: shows distribution for discrete data
+4 Boxplot: visualise edistribution of the data (outlier(<3/2 of quartile)|"maximum"|upperquartile(25% of data greater than value)|median|lowerquartile|"min"|outlier)
+	detect outliers, visualise centrale tnedency
+5 look at descriptive statistics:
+	Central tendency: location of distribution
+		- Mean: average of values
+		- median: second quantile, 50% value are below, 50% above
+		- mode: most frequent value
+	Variance: how values are similar/different
+		- range: maximum-minimum
+		- standard deviation: average of distance with the mean
+		- interquantile range: difference between Q3 and Q1
