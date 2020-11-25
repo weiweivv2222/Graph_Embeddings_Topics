@@ -213,10 +213,10 @@ def compare_algorithms(X_train, y_train, X_test, y_test, optimal_cutoff):
 
 #%%load the data
 
-# load_location="C:\\Users\\xg16060\\OneDrive - APG\\tanguy table\\"
-# save_location = "C:\\Users\\xg16060\\OneDrive - APG\\tanguy table\\constructData\\"
-load_location = "C:\\Users\\xg16137\\PycharmProjects\\NormalizationOneHot\\Data\\"
-save_location = "C:\\Users\\xg16137\\PycharmProjects\\NormalizationOneHot\\ModifiedData\\"
+load_location="C:\\Users\\xg16060\\OneDrive - APG\\tanguy table\\"
+save_location = "C:\\Users\\xg16060\\OneDrive - APG\\tanguy table\\constructData\\"
+#load_location = "C:\\Users\\xg16137\\PycharmProjects\\NormalizationOneHot\\Data\\"
+#save_location = "C:\\Users\\xg16137\\PycharmProjects\\NormalizationOneHot\\ModifiedData\\"
 
 # the three different embeddings of the feature location
 dfTopLocCustEmb = pd.read_csv(load_location + "GLoc_topic_Loc_cust_embeddings.csv")
